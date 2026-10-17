@@ -25,6 +25,20 @@ jobs:
           ref: ${{ inputs.ref }}
           fetch-depth: 0
           fetch-tags: true
+      # Since 3.23.0 every hook wrapper in src/core/version.h calls
+      # WowOpt_RegisterServerSyncHook, which only the unpublished
+      # src/core/server_sync_compat.cpp (WoW Circle's ServerSyncCompat, off by
+      # default) defines, so the public tree does not link. Supply the no-op it
+      # needs when the file is absent.
+      - name: Stub the unpublished ServerSyncCompat hook registration
+        shell: bash
+        run: |
+          if [ -f src/core/server_sync_compat.cpp ] || git grep -q 'void WowOpt_RegisterServerSyncHook(uintptr_t[^;]*{' -- src; then
+            echo "STUB=none" >> "$GITHUB_ENV"
+          else
+            printf '\nextern "C" void WowOpt_RegisterServerSyncHook(uintptr_t, const void*) {}\n' >> src/diagnostics/sampling_profiler.cpp
+            echo "STUB=WowOpt_RegisterServerSyncHook no-op appended to src/diagnostics/sampling_profiler.cpp" >> "$GITHUB_ENV"
+          fi
       - name: build.bat
         shell: cmd
         run: call build.bat
@@ -36,6 +50,7 @@ jobs:
             echo "commit: $(git rev-parse HEAD)"
             echo "describe: $(git describe --tags --always)"
             echo "version.txt: $(cat version.txt)"
+            echo "stub: $STUB"
           } | tee build/Release/BUILD-INFO.txt
           sha256sum build/Release/*.dll build/Release/*.sym | tee -a build/Release/BUILD-INFO.txt
       - uses: actions/upload-artifact@v4
