@@ -1,0 +1,51 @@
+name: build
+
+# Builds wow_optimize from any commit of suprepupre/wow-optimize with the
+# project's own build.bat (Visual Studio 18 2026, Win32, Release), the same
+# MSVC toolchain the official releases are built with. Manual only.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: suprepupre/wow-optimize branch, tag or full commit SHA to build
+        default: main
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          repository: suprepupre/wow-optimize
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+          fetch-tags: true
+      - name: build.bat
+        shell: cmd
+        run: call build.bat
+      - name: Record the build
+        shell: bash
+        run: |
+          {
+            echo "ref: ${{ inputs.ref }}"
+            echo "commit: $(git rev-parse HEAD)"
+            echo "describe: $(git describe --tags --always)"
+            echo "version.txt: $(cat version.txt)"
+          } | tee build/Release/BUILD-INFO.txt
+          sha256sum build/Release/*.dll build/Release/*.sym | tee -a build/Release/BUILD-INFO.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wow-optimize-build
+          path: |
+            build/Release/wow_optimize.dll
+            build/Release/wow_optimize.sym
+            build/Release/version.dll
+            build/Release/wow_optimize_launcher.exe
+            build/Release/BUILD-INFO.txt
+          retention-days: 14
+          if-no-files-found: error
